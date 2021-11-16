@@ -34,6 +34,7 @@ var pulsarrConfig = {
 		},
 		"preferences": {
 			"monitored": true,
+			"seasonFolder": false,
 			"seriesType": "standard",
             "qualityProfileId": 1,
             "folderPath": ""
@@ -52,7 +53,7 @@ const blackhole = {
                 "coverType": "poster",
                 "url": "/img/black-hole-poster.jpg"
             }],
-            "overview": "Oh no! Pulsarr has colapsed into a black hole. Please check your configuration and that you are on a valid IMDB or TVDB page.",
+            "overview": "Oh no! Pulsarr has collapsed into a black hole. Please check your configuration and that you are on a valid IMDB or TVDB page.",
             "title": "Black Hole",
             "year": 404
         }]
@@ -99,7 +100,7 @@ class Pulsarr {
 
                 $('#btnExists').on('click', function() {
                     chrome.tabs.create({
-                        url: radarr.constructBaseUrl() + "/movies/" + media.existingSlug
+                        url: radarr.constructBaseUrl() + "/movie/" + media.existingSlug
                     });
                     return false;
                 });
@@ -134,6 +135,7 @@ class Pulsarr {
                 $('#serverHome').attr("href", sonarr.constructBaseUrl());
                 $("#optSmConfig").removeClass("hidden");
                 $("#optMonitored").removeClass("hidden");
+                $("#optSeasonFolder").removeClass("hidden");
                 $("#optProfile").removeClass("hidden");
                 $("#optFolderPath").removeClass("hidden");
                 $("#optSeriesType").removeClass("hidden");
@@ -150,6 +152,7 @@ class Pulsarr {
 
                 if (media.existingSlug !== "") {
                     $("#optMonitored").addClass("hidden");
+                    $("#optSeasonFolder").addClass("hidden");
                     $("#optProfile").addClass("hidden");
                     $("#optFolderPath").addClass("hidden");
                     $("#optSeriesType").addClass("hidden");
@@ -174,6 +177,7 @@ class Pulsarr {
                         $('#lstProfile').val(),
                         $('#lstSeriesType').val(),
                         $('#monitored').prop('checked'),
+                        $('#seasonFolder').prop('checked'),
                         false,
                         $('#lstFolderPath').val() ? $('#lstFolderPath').val() : addPath
                     );
@@ -185,6 +189,7 @@ class Pulsarr {
                         $('#lstProfile').val(),
                         $('#lstSeriesType').val(),
                         $('#monitored').prop('checked'),
+                        $('#seasonFolder').prop('checked'),
                         true,
                         $('#lstFolderPath').val() ? $('#lstFolderPath').val() : addPath
                     );
@@ -233,38 +238,44 @@ class Pulsarr {
 
 		return regex.test(url);
 	}
-	
+
 	isRotten(url) {
 		var regex = new RegExp(".*rottentomatoes.com\/");
 
 		return regex.test(url);
 	}
-	
+
 	isTMB(url) {
 		var regex = new RegExp(".*themoviedb.org\/");
 
 		return regex.test(url);
 	}
 
-    extractIMDBID(url) {
-        var regex = new RegExp("\/tt\\d{1,7}");
-        var imdbid = regex.exec(url);
+	isLetter(url) {
+		var regex = new RegExp(".*letterboxd.com\/");
 
-        return (imdbid) ? imdbid[0].slice(1, 10) : "";
-    }
+		return regex.test(url);
+	}
 
-    extractTVDBID(url) {
-        var regex = new RegExp("(&|\\?)(id|seriesid)=\\d{1,7}");
-        var tvdbid = regex.exec(url);
+  extractIMDBID(url) {
+    var regex = new RegExp("\/tt\\d{1,7}");
+    var imdbid = regex.exec(url);
 
-        return (tvdbid) ? tvdbid[0].split("=")[1]:"";
-    }
+    return (imdbid) ? imdbid[0].slice(1, 10) : "";
+  }
 
-    async TvdbidFromImdbid(imdbid) {
-		let result = await $.ajax({url: "http://thetvdb.com/api/GetSeriesByRemoteID.php?imdbid=" + imdbid, datatype: "xml"});
+  extractTVDBID(url) {
+    var regex = new RegExp("(&|\\?)(id|seriesid)=\\d{1,7}");
+    var tvdbid = regex.exec(url);
 
-		return $(result).find("seriesid").text();
-    }
+    return (tvdbid) ? tvdbid[0].split("=")[1]:"";
+  }
+
+  async TvdbidFromImdbid(imdbid) {
+  	let result = await $.ajax({url: "http://thetvdb.com/api/GetSeriesByRemoteID.php?imdbid=" + imdbid, datatype: "xml"});
+
+  	return $(result).find("seriesid").text();
+  }
 	
 	async ImdbidFromTitle(title,ismovie) {
 		if (ismovie){
@@ -273,11 +284,10 @@ class Pulsarr {
 			var url = "http://www.imdb.com/find?s=tt&&ttype=tv&ref_=fn_tv&q=" + title;
 		}
 		let result = await $.ajax({url: url, datatype: "xml"});
-		var regex = new RegExp("\/tt\\d{1,7}");
+		var regex = new RegExp("\/tt\\d{1,8}");
 		let imdbid = await regex.exec($(result).find(".result_text").find("a").attr("href"));
 
 		return (imdbid) ? imdbid[0].slice(1, 10) : "";
-
 	}
 	
     saveSettings() {
@@ -603,8 +613,9 @@ class SonarrServer extends Server {
         );
     }
 
-    updatePreferences(monitored, qualityId, seriesType, folderPath) {
+    updatePreferences(monitored, seasonFolder, qualityId, seriesType, folderPath) {
         pulsarrConfig.sonarr.preferences.monitored = monitored;
+        pulsarrConfig.sonarr.preferences.seasonFolder = seasonFolder;
         pulsarrConfig.sonarr.preferences.qualityProfileId = qualityId;
         pulsarrConfig.sonarr.preferences.seriesType = seriesType;
         pulsarrConfig.sonarr.preferences.folderPath = folderPath;
@@ -618,10 +629,15 @@ class SonarrServer extends Server {
         } else {
             $('#monitored').bootstrapToggle('off');
         }
+        if (pulsarrConfig.sonarr.preferences.seasonFolder) {
+            $('#seasonFolder').bootstrapToggle('on');
+        } else {
+            $('#seasonFolder').bootstrapToggle('off');
+        }
         $('#lstSeriesType').val(pulsarrConfig.sonarr.preferences.seriesType);
     }
 
-    addSeries(series, qualityId, seriesType, monitored, addSearch, folderPath) {
+    addSeries(series, qualityId, seriesType, monitored, seasonFolder, addSearch, folderPath) {
         pulsarr.loading();
 
         var newSeries = {
@@ -634,6 +650,7 @@ class SonarrServer extends Server {
             "tvdbId": series.tvdbId,
             "rootFolderPath": folderPath,
             "monitored": monitored,
+            "seasonFolder": seasonFolder,
             "addOptions": {
                 "ignoreEpisodesWithFiles": false,
                 "ignoreEpisodesWithoutFiles": false,
@@ -642,7 +659,7 @@ class SonarrServer extends Server {
         };
 
         this.post("/api/series", newSeries).then(function(response) {
-            sonarr.updatePreferences(monitored, qualityId, seriesType, folderPath);
+            sonarr.updatePreferences(monitored, seasonFolder, qualityId, seriesType, folderPath);
             pulsarr.info("Series added to Sonarr!");
             setTimeout(function() {
                 window.close();
@@ -905,9 +922,10 @@ let loadFromRottenUrl = async (url) => {
 	} else if (regexmov.test(url)) {
 		try {
 			let result = await $.ajax({url: url, datatype: "xml"});
-			var title = $(result).find("#movie-title").text().trim();
+			var title = $(result).find(".mop-ratings-wrap h1").text().trim();
 			let imdbid = await pulsarr.ImdbidFromTitle(title,1);
 			let movie = await radarr.lookupMovie(imdbid);
+
 			if (movie) {
 				pulsarr.info(movie);
 			}
@@ -957,6 +975,25 @@ let loadFromTMBUrl = async (url) => {
 	}
 }
 
+let loadFromLetterUrl = async (url) => {
+  var regexmov = new RegExp("letterboxd.com\/film\/");
+  if (regexmov.test(url)) {
+    try {
+      let result = await $.ajax({url: url, datatype: "xml"});
+      var title = $(result).find("h1[itemprop='name']").text().trim();
+      let imdbid = await pulsarr.ImdbidFromTitle(title,1);
+      let movie = await radarr.lookupMovie(imdbid);
+      if (movie) {
+        pulsarr.info(movie);
+      }
+    } catch (err) {
+      pulsarr.init(err);
+    }
+  } else {
+    pulsarr.info("Could not find media. Are you on a valid Movie page?");
+  }
+}
+
 getCurrentTabUrl(async (url) => {
     if (pulsarr.isImdb(url)) {
 		loadFromImdbUrl(url);
@@ -968,8 +1005,10 @@ getCurrentTabUrl(async (url) => {
 		loadFromRottenUrl(url);
 	} else if (pulsarr.isTMB(url)) {
 		loadFromTMBUrl(url);
+  	} else if (pulsarr.isLetter(url)) {
+    	loadFromLetterUrl(url);
     } else {
-        pulsarr.info("Pulsarr does not recognise this as a valid website. Please check if that you are on either IMDB or TVDB.");
+      pulsarr.info("Pulsarr does not recognise this as a valid website. Please check if that you are on either IMDB or TVDB.");
     }
 
     $('#btmSmConfig').on('click', function() {
